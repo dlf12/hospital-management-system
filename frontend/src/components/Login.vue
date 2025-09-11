@@ -63,43 +63,47 @@ const handleLogin = async () => {
 
 <style scoped>
 .login-container {
-  max-width: 350px;
-  margin: 100px auto;
-  padding: 2em;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  margin: 80px auto;
+  padding: 2.5em;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
   text-align: center;
+  border: 1px solid var(--border-color);
+}
+
+h2 {
+  margin-top: 0;
+  margin-bottom: 1.5em;
+  color: var(--text-color);
+  font-weight: 600;
 }
 
 .error-message {
-  color: #e74c3c;
-  margin-top: 1em;
+  color: var(--danger-color);
+  margin-top: 1.5em;
+  font-size: 0.9em;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5em; /* 使用 gap 增加间距 */
 }
 
 input {
-  display: block;
-  width: calc(100% - 1.6em); /* 减去 padding */
-  margin-bottom: 1.5em;
-  padding: 0.8em;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  font-size: 1em;
+  /* 样式已在 style.css 中统一，这里可以留空或微调 */
 }
 
-button {
-  width: 100%;
-  padding: 0.8em;
-  border: none;
-  border-radius: 4px;
-  background-color: #42b883;
+button[type="submit"] {
+  background-color: var(--primary-color);
   color: white;
   font-size: 1.1em;
-  cursor: pointer;
-  transition: background-color 0.3s;
+  border: none;
 }
 
-button:hover {
-  background-color: #36a374;
+button[type="submit"]:hover {
+  background-color: var(--primary-hover-color);
 }
 </style>
