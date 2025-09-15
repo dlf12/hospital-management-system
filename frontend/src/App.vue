@@ -1,58 +1,71 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import PatientManager from './components/PatientManager.vue';
 import Login from './components/Login.vue';
+import apiClient from './api/apiClient'; // 导入 apiClient
 
 // 跟踪登录状态
 const isLoggedIn = ref(false);
 
 // 登录成功时调用
-const onLoginSuccess = () => {
+const onLoginSuccess = (token) => {
+  // 1. 将 token 存入 localStorage
+  localStorage.setItem('accessToken', token);
+  // 2. 更新登录状态
   isLoggedIn.value = true;
 };
 
-// 新增：处理登出逻辑
+// 处理登出逻辑
 const handleLogout = () => {
+  // 1. 从 localStorage 中移除 token
+  localStorage.removeItem('accessToken');
+  // 2. 更新登录状态
   isLoggedIn.value = false;
-  // 未来如果使用 token，可以在这里清除 token
 };
+
+// Vue 生命周期钩子，在组件挂载到 DOM 后执行
+onMounted(() => {
+  // 检查 localStorage 中是否存在 token，如果存在则认为用户已登录
+  const token = localStorage.getItem('accessToken');
+  if (token) {
+    isLoggedIn.value = true;
+  }
+});
 </script>
 
 <template>
-  <!-- 新增：统一的页眉 -->
   <header class="app-header">
     <h1>医院病历管理系统</h1>
-    <!-- 仅在登录后显示登出按钮 -->
     <button v-if="isLoggedIn" @click="handleLogout" class="logout-button">
       登出
     </button>
   </header>
 
   <main>
-    <!-- 条件渲染逻辑保持不变 -->
     <Login v-if="!isLoggedIn" @login-success="onLoginSuccess" />
     <PatientManager v-else />
   </main>
 </template>
 
 <style scoped>
+/* 样式保持不变 */
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 5%; /* 左右留白 */
+  padding: 0 5%;
   background-color: #ffffff;
   border-bottom: 1px solid #e0e0e0;
   width: 100%;
-  position: fixed; /* 固定在顶部 */
+  position: fixed;
   top: 0;
   left: 0;
-  z-index: 1001; /* 确保在最上层 */
-  box-sizing: border-box; /* 让 padding 不会撑大宽度 */
+  z-index: 1001;
+  box-sizing: border-box;
 }
 
 .app-header h1 {
-  font-size: 1.5em; /* 调整标题大小 */
+  font-size: 1.5em;
   color: #2c3e50;
   margin: 0;
   padding: 20px 0;
@@ -73,7 +86,6 @@ const handleLogout = () => {
   color: white;
 }
 
-/* main 区域需要增加上边距，避免被 header 遮挡 */
 main {
   padding-top: 100px;
   text-align: center;

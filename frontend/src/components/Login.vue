@@ -1,109 +1,144 @@
 <script setup>
-// 1. 导入需要的工具
-import { ref } from 'vue';      // 'ref' 用来创建响应式变量，当变量改变时，界面会自动更新
-import axios from 'axios';    // 用来发送 HTTP 请求给后端
+import { ref } from 'vue';
+import apiClient from '../api/apiClient';
 
-// 2. 定义一个 emit 函数，用于向父组件（App.vue）发送“登录成功”的信号
 const emit = defineEmits(['login-success']);
 
-// 3. 创建响应式变量来绑定表单输入
-const username = ref('');      // 对应用户名输入框
-const password = ref('');      // 对应密码输入框
-const errorMessage = ref('');  // 用来存储登录失败时的错误信息
+// --- 响应式变量 ---
+const username = ref('');
+const password = ref('');
+const errorMessage = ref('');
+const successMessage = ref(''); // 新增：用于显示注册成功等成功信息
 
-// 4. 定义处理登录的函数
-const handleLogin = async () => {
-  // 清空之前的错误信息
+// 新增：一个状态，用于切换登录/注册模式
+const isRegisterMode = ref(false);
+
+// --- 模式切换函数 ---
+const toggleMode = () => {
+  isRegisterMode.value = !isRegisterMode.value;
+  // 切换模式时清空所有消息和输入
+  username.value = '';
+  password.value = '';
   errorMessage.value = '';
+  successMessage.value = '';
+};
 
+// --- 逻辑处理函数 ---
+
+// 处理登录
+const handleLogin = async () => {
   try {
-    // 5. 使用 axios 发送 POST 请求到后端的 /api/login 接口
-    const response = await axios.post('http://127.0.0.1:5000/api/login', {
+    const response = await apiClient.post('/login', {
       username: username.value,
       password: password.value,
     });
-
-    // 6. 如果请求成功（没有抛出错误），就意味着登录成功
-    console.log("登录成功:", response.data.message);
-
-    // 7. 发送 'login-success' 事件，通知父组件
-    emit('login-success');
-
+    emit('login-success', response.data.access_token);
   } catch (error) {
-    // 8. 如果请求失败（比如后端返回 401 错误），代码会进入 catch 块
     if (error.response) {
-      // 从后端的响应中获取错误信息并显示
       errorMessage.value = error.response.data.message || '登录失败，请重试！';
     } else {
-      errorMessage.value = '无法连接到服务器，请检查后端是否运行。';
+      errorMessage.value = '无法连接到服务器。';
     }
-    console.error("登录失败:", error);
+  }
+};
+
+// 新增：处理注册
+const handleRegister = async () => {
+  try {
+    const response = await apiClient.post('/register', {
+      username: username.value,
+      password: password.value,
+    });
+    // 注册成功
+    successMessage.value = `${response.data.message}，请登录。`;
+    // 自动切换回登录模式
+    isRegisterMode.value = false;
+    errorMessage.value = '';
+    // 清空密码框，保留用户名方便用户直接登录
+    password.value = '';
+  } catch (error) {
+    if (error.response) {
+      // 例如，用户名已存在
+      errorMessage.value = error.response.data.message || '注册失败，请重试！';
+    } else {
+      errorMessage.value = '无法连接到服务器。';
+    }
+  }
+};
+
+// 统一的表单提交入口
+const handleSubmit = () => {
+  // 提交前清空消息
+  errorMessage.value = '';
+  successMessage.value = '';
+
+  if (!username.value || !password.value) {
+    errorMessage.value = '用户名和密码不能为空！';
+    return;
+  }
+
+  // 根据当前模式调用不同的函数
+  if (isRegisterMode.value) {
+    handleRegister();
+  } else {
+    handleLogin();
   }
 };
 </script>
 
 <template>
   <div class="login-container">
-    <h2>系统登录</h2>
+    <!-- 标题根据模式动态变化 -->
+    <h2>{{ isRegisterMode ? '创建新账户' : '系统登录' }}</h2>
 
-    <!-- 使用 @submit.prevent 来监听表单提交事件，并调用 handleLogin 函数 -->
-    <form @submit.prevent="handleLogin">
-
-      <!-- 使用 v-model 将输入框的值与 script 中的响应式变量双向绑定 -->
+    <!-- 表单提交时调用统一的 handleSubmit 函数 -->
+    <form @submit.prevent="handleSubmit">
       <input v-model="username" placeholder="用户名" required />
       <input v-model="password" type="password" placeholder="密码" required />
-
-      <button type="submit">登录</button>
+      <!-- 按钮文字根据模式动态变化 -->
+      <button type="submit">{{ isRegisterMode ? '注册' : '登录' }}</button>
     </form>
 
-    <!-- 如果 errorMessage 有内容，就显示这个错误提示 -->
+    <!-- 消息提示区 -->
     <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+    <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
+
+    <!-- 新增：模式切换链接 -->
+    <p class="toggle-mode">
+      {{ isRegisterMode ? '已有账户?' : '还没有账户?' }}
+      <a href="#" @click.prevent="toggleMode">
+        {{ isRegisterMode ? '立即登录' : '立即注册' }}
+      </a>
+    </p>
   </div>
 </template>
 
 <style scoped>
-.login-container {
-  max-width: 400px;
-  margin: 80px auto;
-  padding: 2.5em;
-  background-color: #ffffff;
-  border-radius: 12px;
-  box-shadow: var(--card-shadow);
-  text-align: center;
-  border: 1px solid var(--border-color);
-}
+/* 原有样式保持不变 */
+.login-container { max-width: 400px; margin: 80px auto; padding: 2.5em; background-color: #ffffff; border-radius: 12px; box-shadow: var(--card-shadow); text-align: center; border: 1px solid var(--border-color); }
+h2 { margin-top: 0; margin-bottom: 1.5em; color: var(--text-color); font-weight: 600; }
+form { display: flex; flex-direction: column; gap: 1.5em; }
+button[type="submit"] { background-color: var(--primary-color); color: white; font-size: 1.1em; border: none; }
+button[type="submit"]:hover { background-color: var(--primary-hover-color); }
 
-h2 {
-  margin-top: 0;
-  margin-bottom: 1.5em;
-  color: var(--text-color);
-  font-weight: 600;
-}
+/* 消息样式 */
+.error-message { color: var(--danger-color); margin-top: 1.5em; font-size: 0.9em; }
+/* 新增：成功消息样式 */
+.success-message { color: var(--success-color); margin-top: 1.5em; font-size: 0.9em; }
 
-.error-message {
-  color: var(--danger-color);
-  margin-top: 1.5em;
+/* 新增：模式切换链接样式 */
+.toggle-mode {
+  margin-top: 2em;
   font-size: 0.9em;
+  color: var(--text-secondary-color);
 }
-
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5em; /* 使用 gap 增加间距 */
+.toggle-mode a {
+  font-weight: 600;
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: color 0.2s;
 }
-
-input {
-  /* 样式已在 style.css 中统一，这里可以留空或微调 */
-}
-
-button[type="submit"] {
-  background-color: var(--primary-color);
-  color: white;
-  font-size: 1.1em;
-  border: none;
-}
-
-button[type="submit"]:hover {
-  background-color: var(--primary-hover-color);
+.toggle-mode a:hover {
+  color: var(--primary-hover-color);
 }
 </style>
