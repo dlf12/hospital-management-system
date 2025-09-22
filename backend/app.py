@@ -110,17 +110,37 @@ def login():
 
 # -- 病人接口 (受保护) --
 @app.route('/api/patients', methods=['GET'])
-@jwt_required() # 添加保护
+@jwt_required()  # 保持原有保护
 def get_patients():
-    search_query = request.args.get('search', '') # 获取搜索查询参数
+    # 搜索
+    search_query = request.args.get('search', '').strip()
+    # 分页参数（默认 page=1, per_page=20）
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except ValueError:
+        page = 1
+    try:
+        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
+    except ValueError:
+        per_page = 20
+
     query = Patient.query
     if search_query:
-        # 使用 or_ 进行模糊搜索
         search_term = f"%{search_query}%"
         query = query.filter(or_(Patient.name.like(search_term), Patient.id_card.like(search_term)))
 
-    patients = query.order_by(Patient.name).all()
-    return jsonify([patient.to_dict() for patient in patients])
+    # 使用 SQLAlchemy 的 paginate（Flask-SQLAlchemy >=2.5 支持）
+    pagination = query.order_by(Patient.name).paginate(page=page, per_page=per_page, error_out=False)
+
+    items = [patient.to_dict() for patient in pagination.items]
+    return jsonify({
+        'items': items,
+        'total': pagination.total,
+        'page': pagination.page,
+        'pages': pagination.pages,
+        'per_page': pagination.per_page
+    })
+
 
 @app.route('/api/patients', methods=['POST'])
 @jwt_required() # 添加保护
