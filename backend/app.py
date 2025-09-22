@@ -8,6 +8,12 @@ from werkzeug.security import generate_password_hash, check_password_hash # 新�
 from datetime import datetime
 from sqlalchemy import or_ # 新增：用于实现搜索功能
 
+
+from sqlalchemy import func
+from flask_jwt_extended import get_jwt_identity
+import json
+
+
 # 1. 创建 Flask 应用实例
 app = Flask(__name__)
 
@@ -70,6 +76,46 @@ class MedicalRecord(db.Model):
             'record_date': self.record_date.strftime('%Y-%m-%d %H:%M:%S'),
             'patient_id': self.patient_id
         }
+
+
+
+class Template(db.Model):
+    __tablename__ = 'templates'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)            # 模板名
+    description = db.Column(db.Text, nullable=True)             # 描述/备注
+    content = db.Column(db.Text, nullable=False)                # 存 JSON 或直接文本（例如包含 diagnosis/treatment_plan）
+    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    is_shared = db.Column(db.Boolean, default=False)            # 是否对同机构/所有用户共享（简单设计）
+    created_at = db.Column(db.DateTime, server_default=func.now())
+    updated_at = db.Column(db.DateTime, server_default=func.now(), onupdate=func.now())
+
+    owner = db.relationship('User', backref='templates')
+
+    def to_dict(self):
+        # 尝试把 content 解析为 JSON，否则返回原始字符串
+        try:
+            content_parsed = json.loads(self.content)
+        except Exception:
+            content_parsed = self.content
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'content': content_parsed,
+            'owner_id': self.owner_id,
+            'is_shared': self.is_shared,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else None,
+        }
+
+
+def get_current_user():
+    identity = get_jwt_identity()
+    if not identity:
+        return None
+    return User.query.filter_by(username=identity).first()
+
 
 # --- API 接口定义 ---
 
@@ -205,6 +251,127 @@ def add_record_for_patient(patient_id):
     db.session.add(new_record)
     db.session.commit()
     return jsonify(new_record.to_dict()), 201
+
+
+
+@app.route('/api/templates', methods=['GET'])
+@jwt_required()
+def list_templates():
+    user = get_current_user()
+    # 支持查询共享模板与自己模板
+    only_mine = request.args.get('mine', 'true').lower() == 'true'
+    query = Template.query
+    if only_mine:
+        query = query.filter((Template.owner_id == user.id) | (Template.is_shared == True))
+    templates = query.order_by(Template.updated_at.desc()).all()
+    return jsonify([t.to_dict() for t in templates])
+
+@app.route('/api/templates', methods=['POST'])
+@jwt_required()
+def create_template():
+    user = get_current_user()
+    data = request.get_json() or {}
+    name = data.get('name')
+    content = data.get('content')
+    if not name or content is None:
+        return jsonify({'message': '模板名称和内容不能为空'}), 400
+    tpl = Template(
+        name=name,
+        description=data.get('description'),
+        content=json.dumps(content) if not isinstance(content, str) else content,
+        owner_id=user.id,
+        is_shared=bool(data.get('is_shared', False))
+    )
+    db.session.add(tpl)
+    db.session.commit()
+    return jsonify(tpl.to_dict()), 201
+
+
+@app.route('/api/templates/<int:tpl_id>', methods=['GET'])
+@jwt_required()
+def get_template(tpl_id):
+    tpl = Template.query.get_or_404(tpl_id)
+    return jsonify(tpl.to_dict())
+
+@app.route('/api/templates/<int:tpl_id>', methods=['PUT'])
+@jwt_required()
+def update_template(tpl_id):
+    user = get_current_user()
+    tpl = Template.query.get_or_404(tpl_id)
+    if tpl.owner_id != user.id:
+        return jsonify({'message': '无权限修改该模板'}), 403
+    data = request.get_json() or {}
+    tpl.name = data.get('name', tpl.name)
+    tpl.description = data.get('description', tpl.description)
+    if 'content' in data:
+        tpl.content = json.dumps(data['content']) if not isinstance(data['content'], str) else data['content']
+    tpl.is_shared = bool(data.get('is_shared', tpl.is_shared))
+    db.session.commit()
+    return jsonify(tpl.to_dict())
+
+@app.route('/api/templates/<int:tpl_id>', methods=['DELETE'])
+@jwt_required()
+def delete_template(tpl_id):
+    user = get_current_user()
+    tpl = Template.query.get_or_404(tpl_id)
+    if tpl.owner_id != user.id:
+        return jsonify({'message': '无权限删除该模板'}), 403
+    db.session.delete(tpl)
+    db.session.commit()
+    return jsonify({'message': '模板已删除'})
+
+
+@app.route('/api/patients/<int:patient_id>/records/<int:record_id>/save_as_template', methods=['POST'])
+@jwt_required()
+def save_record_as_template(patient_id, record_id):
+    user = get_current_user()
+    # 验证病人和病历存在
+    Patient.query.get_or_404(patient_id)
+    rec = MedicalRecord.query.get_or_404(record_id)
+    # 构建模板内容（可按需扩展：把diagnosis/treatment_plan/其它字段放入content）
+    tpl_name = request.get_json().get('name') or f"模板 - {rec.id} - {rec.record_date.strftime('%Y%m%d')}"
+    tpl_desc = request.get_json().get('description', '')
+    content = {
+        'diagnosis': rec.diagnosis,
+        'treatment_plan': rec.treatment_plan
+    }
+    tpl = Template(
+        name=tpl_name,
+        description=tpl_desc,
+        content=json.dumps(content),
+        owner_id=user.id
+    )
+    db.session.add(tpl)
+    db.session.commit()
+    return jsonify(tpl.to_dict()), 201
+
+
+@app.route('/api/patients/<int:patient_id>/records/from_template/<int:tpl_id>', methods=['POST'])
+@jwt_required()
+def create_record_from_template(patient_id, tpl_id):
+    Patient.query.get_or_404(patient_id)
+    tpl = Template.query.get_or_404(tpl_id)
+    # 解析内容，支持纯文本或 json
+    try:
+        content = json.loads(tpl.content)
+    except Exception:
+        # 推测 content 为字符串，前端应提供 diagnosis/treatment_plan
+        return jsonify({'message': '模板内容不可解析为 JSON，请前端传递具体字段'}), 400
+    # 允许前端覆盖
+    payload = request.get_json() or {}
+    diagnosis = payload.get('diagnosis', content.get('diagnosis'))
+    treatment_plan = payload.get('treatment_plan', content.get('treatment_plan'))
+    if not diagnosis or not treatment_plan:
+        return jsonify({'message': '创建病历需要诊断和治疗方案'}), 400
+    new_record = MedicalRecord(
+        diagnosis=diagnosis,
+        treatment_plan=treatment_plan,
+        patient_id=patient_id
+    )
+    db.session.add(new_record)
+    db.session.commit()
+    return jsonify(new_record.to_dict()), 201
+
 
 # --- 启动命令 ---
 if __name__ == '__main__':
