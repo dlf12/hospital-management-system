@@ -14,7 +14,9 @@ const newTemplate = ref({
   description: '',
   content: {
     diagnosis: '',
-    treatment_plan: ''
+    treatment_plan: '',
+    medical_history: '',
+    allergy_history: ''
   },
   is_shared: false
 });
@@ -75,8 +77,20 @@ const startEdit = (template) => {
     try {
       editingTemplate.value.content = JSON.parse(editingTemplate.value.content);
     } catch (e) {
-      editingTemplate.value.content = { diagnosis: '', treatment_plan: '' };
+      editingTemplate.value.content = { 
+        diagnosis: '', 
+        treatment_plan: '',
+        medical_history: '',
+        allergy_history: ''
+      };
     }
+  }
+  // 确保所有字段都存在
+  if (!editingTemplate.value.content.medical_history) {
+    editingTemplate.value.content.medical_history = '';
+  }
+  if (!editingTemplate.value.content.allergy_history) {
+    editingTemplate.value.content.allergy_history = '';
   }
 };
 
@@ -90,7 +104,9 @@ const resetForm = () => {
     description: '',
     content: {
       diagnosis: '',
-      treatment_plan: ''
+      treatment_plan: '',
+      medical_history: '',
+      allergy_history: ''
     },
     is_shared: false
   };
@@ -168,6 +184,18 @@ onMounted(fetchTemplates);
               }}
             </div>
           </div>
+          <div class="preview-section" v-if="template.content.medical_history">
+            <label>既往病史:</label>
+            <div class="preview-content">
+              {{ template.content.medical_history }}
+            </div>
+          </div>
+          <div class="preview-section" v-if="template.content.allergy_history">
+            <label>过敏史:</label>
+            <div class="preview-content">
+              {{ template.content.allergy_history }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -230,6 +258,24 @@ onMounted(fetchTemplates);
                 rows="4"
                 placeholder="输入标准治疗方案"
                 required
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>既往病史</label>
+            <textarea
+                v-model="newTemplate.content.medical_history"
+                rows="3"
+                placeholder="输入既往病史（选填）"
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>过敏史</label>
+            <textarea
+                v-model="newTemplate.content.allergy_history"
+                rows="3"
+                placeholder="输入过敏史（选填）"
             ></textarea>
           </div>
 
@@ -300,6 +346,24 @@ onMounted(fetchTemplates);
                 rows="4"
                 placeholder="输入标准治疗方案"
                 required
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>既往病史</label>
+            <textarea
+                v-model="editingTemplate.content.medical_history"
+                rows="3"
+                placeholder="输入既往病史（选填）"
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>过敏史</label>
+            <textarea
+                v-model="editingTemplate.content.allergy_history"
+                rows="3"
+                placeholder="输入过敏史（选填）"
             ></textarea>
           </div>
 
@@ -685,6 +749,8 @@ onMounted(fetchTemplates);
   font-size: 1rem;
   transition: all 0.2s ease;
   font-family: inherit;
+  background: #ffffff;
+  color: #2d3748;
 }
 
 .form-group input:focus,

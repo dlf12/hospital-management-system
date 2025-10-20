@@ -9,7 +9,12 @@ const newPatient = ref({ name: '', id_card: '', age: '', gender: '男', phone_nu
 // 病历管理相关
 const selectedPatient = ref(null);
 const patientRecords = ref([]);
-const newRecord = ref({ diagnosis: '', treatment_plan: '' });
+const newRecord = ref({ 
+  diagnosis: '', 
+  treatment_plan: '',
+  medical_history: '',
+  allergy_history: ''
+});
 const showRecordModal = ref(false);
 
 // 新增：病人编辑相关
@@ -134,7 +139,12 @@ const addRecord = async () => {
   }
   try {
     await apiClient.post(`/patients/${selectedPatient.value.id}/records`, newRecord.value);
-    newRecord.value = { diagnosis: '', treatment_plan: '' };
+    newRecord.value = { 
+      diagnosis: '', 
+      treatment_plan: '',
+      medical_history: '',
+      allergy_history: ''
+    };
     // 刷新病历列表
     const response = await apiClient.get(`/patients/${selectedPatient.value.id}/records`);
     patientRecords.value = response.data;
@@ -160,6 +170,8 @@ const applySelectedTemplate = () => {
   }
   newRecord.value.diagnosis = content.diagnosis || newRecord.value.diagnosis;
   newRecord.value.treatment_plan = content.treatment_plan || newRecord.value.treatment_plan;
+  newRecord.value.medical_history = content.medical_history || newRecord.value.medical_history;
+  newRecord.value.allergy_history = content.allergy_history || newRecord.value.allergy_history;
 };
 
 // 保存当前填写的 newRecord 为模板
@@ -173,7 +185,9 @@ const saveCurrentRecordAsTemplate = async () => {
     name,
     content: {
       diagnosis: newRecord.value.diagnosis,
-      treatment_plan: newRecord.value.treatment_plan
+      treatment_plan: newRecord.value.treatment_plan,
+      medical_history: newRecord.value.medical_history,
+      allergy_history: newRecord.value.allergy_history
     }
   };
   try {

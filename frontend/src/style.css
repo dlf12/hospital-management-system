@@ -746,3 +746,36 @@ tbody tr:last-child td {
         --bg-primary: #ffffff;
     }
 }
+
+/* -------------------------------------------------------
+   强制：所有表单与表格保持浅色底、深色字（忽略系统暗色）
+   解决：
+   - 登录页白底白字问题
+   - 病人列表（表格）在暗色模式下显示为黑底的问题
+-------------------------------------------------------- */
+input,
+select,
+textarea {
+    background: #ffffff !important;
+    color: #2d3748 !important; /* 深色字体 */
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: #a0aec0 !important; /* 统一占位符颜色 */
+}
+
+/* 表格统一浅色风格 */
+table,
+.patient-table,
+.patient-table tbody tr,
+.patient-table td,
+.patient-table th {
+    background-color: #ffffff !important;
+    color: #2d3748 !important;
+}
+
+.patient-table th {
+    background-color: #f7fafc !important;
+    color: #4a5568 !important;
+}
