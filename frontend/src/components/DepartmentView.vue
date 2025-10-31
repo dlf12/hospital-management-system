@@ -36,8 +36,12 @@ const selectedPatient = ref(null);
 const patientRecords = ref([]);
 const selectedRecord = ref(null);
 const selectedTemplateId = ref('');
+const aiTemplateSuggestions = ref([]);
+const aiGenerateLoading = ref(false);
+const aiTemplateLoading = ref(false);
 
 const recordForm = ref({
+  symptom: '',
   diagnosis: '',
   treatment_plan: '',
   medical_history: '',
@@ -139,6 +143,7 @@ const openRecordModal = async (patient) => {
   
   // 重置表单
   recordForm.value = {
+    symptom: '',
     diagnosis: '',
     treatment_plan: '',
     medical_history: '',
@@ -146,6 +151,7 @@ const openRecordModal = async (patient) => {
   };
   selectedRecord.value = null;
   selectedTemplateId.value = '';
+  aiTemplateSuggestions.value = [];
   
   await fetchTemplates();
   showRecordModal.value = true;
@@ -154,24 +160,32 @@ const openRecordModal = async (patient) => {
 const selectRecord = (record) => {
   selectedRecord.value = record;
   recordForm.value = {
+    symptom: record.symptom || '',
     diagnosis: record.diagnosis,
     treatment_plan: record.treatment_plan,
     medical_history: record.medical_history || '',
     allergy_history: record.allergy_history || ''
   };
+  aiTemplateSuggestions.value = [];
 };
 
 const addNewRecord = () => {
   selectedRecord.value = null;
   recordForm.value = {
+    symptom: '',
     diagnosis: '',
     treatment_plan: '',
     medical_history: '',
     allergy_history: ''
   };
+  aiTemplateSuggestions.value = [];
 };
 
 const saveRecord = async () => {
+  if (!recordForm.value.symptom) {
+    alert('症状不能为空');
+    return;
+  }
   if (!recordForm.value.diagnosis || !recordForm.value.treatment_plan) {
     alert('诊断和治疗方案不能为空');
     return;
@@ -220,6 +234,7 @@ const applyTemplate = () => {
     content = {};
   }
   
+  recordForm.value.symptom = content.symptom || recordForm.value.symptom;
   recordForm.value.diagnosis = content.diagnosis || recordForm.value.diagnosis;
   recordForm.value.treatment_plan = content.treatment_plan || recordForm.value.treatment_plan;
   recordForm.value.medical_history = content.medical_history || recordForm.value.medical_history;
@@ -245,6 +260,65 @@ const exportAsTemplate = async () => {
   } catch (error) {
     alert('导出模板失败');
   }
+};
+
+const aiGenerateSuggestions = async () => {
+  if (!recordForm.value.symptom) {
+    alert('请先填写症状');
+    return;
+  }
+
+  aiGenerateLoading.value = true;
+  try {
+    const payload = {
+      symptom: recordForm.value.symptom,
+      medical_history: recordForm.value.medical_history,
+      allergy_history: recordForm.value.allergy_history,
+      age: selectedPatient.value?.age,
+      gender: selectedPatient.value?.gender
+    };
+
+    const { data } = await apiClient.post('/ai/generate_record_suggestion', payload);
+    if (data?.diagnosis) {
+      recordForm.value.diagnosis = data.diagnosis;
+    }
+    if (data?.treatment_plan) {
+      recordForm.value.treatment_plan = data.treatment_plan;
+    }
+  } catch (error) {
+    alert(error.response?.data?.message || 'AI 生成失败');
+  } finally {
+    aiGenerateLoading.value = false;
+  }
+};
+
+const aiSuggestTemplates = async () => {
+  if (!recordForm.value.symptom) {
+    alert('请先填写症状');
+    return;
+  }
+
+  aiTemplateLoading.value = true;
+  try {
+    const { data } = await apiClient.post('/ai/suggest_templates', {
+      symptom: recordForm.value.symptom
+    });
+    aiTemplateSuggestions.value = data?.items || [];
+    if (!aiTemplateSuggestions.value.length) {
+      alert('未找到匹配的模板');
+    }
+  } catch (error) {
+    aiTemplateSuggestions.value = [];
+    alert(error.response?.data?.message || 'AI 推荐失败');
+  } finally {
+    aiTemplateLoading.value = false;
+  }
+};
+
+const useSuggestedTemplate = async (templateId) => {
+  if (!templateId) return;
+  selectedTemplateId.value = String(templateId);
+  await applyTemplate();
 };
 
 // 生命周期
@@ -442,7 +516,7 @@ onMounted(() => {
                 @click="selectRecord(record)"
               >
                 <div class="record-date">{{ record.record_date }}</div>
-                <div class="record-preview">{{ record.diagnosis.substring(0, 30) }}...</div>
+                <div class="record-preview">{{ (record.symptom || record.diagnosis || '').substring(0, 30) }}...</div>
               </div>
               <div v-if="patientRecords.length === 0" class="empty-records">
                 暂无病历记录
@@ -461,13 +535,43 @@ onMounted(() => {
                     {{ t.name }}
                   </option>
                 </select>
+                <button @click="aiSuggestTemplates" class="btn-secondary" :disabled="aiTemplateLoading">
+                  {{ aiTemplateLoading ? '推荐中...' : 'AI 推荐模板' }}
+                </button>
+                <button @click="aiGenerateSuggestions" class="btn-primary" :disabled="aiGenerateLoading">
+                  {{ aiGenerateLoading ? '生成中...' : 'AI 生成建议' }}
+                </button>
                 <button @click="exportAsTemplate" class="btn-export" :disabled="!selectedRecord">
                   📤 导出为模板
                 </button>
               </div>
             </div>
 
+            <div v-if="aiTemplateSuggestions.length" class="ai-suggestion-list">
+              <span class="suggestion-title">AI 推荐模板：</span>
+              <div class="suggestion-tags">
+                <button
+                  v-for="item in aiTemplateSuggestions"
+                  :key="item.id"
+                  type="button"
+                  class="btn-secondary"
+                  @click="useSuggestedTemplate(item.id)"
+                >
+                  {{ item.name }}
+                </button>
+              </div>
+            </div>
+
             <form @submit.prevent="saveRecord" class="record-form">
+              <div class="form-group">
+                <label>症状 <span class="required">*</span></label>
+                <textarea
+                  v-model="recordForm.symptom"
+                  rows="3"
+                  placeholder="请输入症状信息"
+                  required
+                ></textarea>
+              </div>
               <div class="form-group">
                 <label>诊断 <span class="required">*</span></label>
                 <textarea
@@ -986,6 +1090,26 @@ onMounted(() => {
   background: white;
   color: #2d3748;
   cursor: pointer;
+}
+
+.ai-suggestion-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.suggestion-title {
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.suggestion-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .btn-export {

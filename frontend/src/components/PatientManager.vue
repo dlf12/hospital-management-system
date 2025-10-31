@@ -10,6 +10,7 @@ const newPatient = ref({ name: '', id_card: '', age: '', gender: '男', phone_nu
 const selectedPatient = ref(null);
 const patientRecords = ref([]);
 const newRecord = ref({ 
+  symptom: '',
   diagnosis: '', 
   treatment_plan: '',
   medical_history: '',
@@ -133,6 +134,10 @@ const openRecordManager = async (patient) => {
 };
 
 const addRecord = async () => {
+  if (!newRecord.value.symptom) {
+    alert('症状不能为空！');
+    return;
+  }
   if (!newRecord.value.diagnosis || !newRecord.value.treatment_plan) {
     alert('诊断信息和治疗方案不能为空！');
     return;
@@ -140,6 +145,7 @@ const addRecord = async () => {
   try {
     await apiClient.post(`/patients/${selectedPatient.value.id}/records`, newRecord.value);
     newRecord.value = { 
+      symptom: '',
       diagnosis: '', 
       treatment_plan: '',
       medical_history: '',
@@ -168,6 +174,7 @@ const applySelectedTemplate = () => {
     // 解析失败则当作纯文本（不会填充）
     content = {};
   }
+  newRecord.value.symptom = content.symptom || newRecord.value.symptom;
   newRecord.value.diagnosis = content.diagnosis || newRecord.value.diagnosis;
   newRecord.value.treatment_plan = content.treatment_plan || newRecord.value.treatment_plan;
   newRecord.value.medical_history = content.medical_history || newRecord.value.medical_history;
@@ -184,6 +191,7 @@ const saveCurrentRecordAsTemplate = async () => {
   const payload = {
     name,
     content: {
+      symptom: newRecord.value.symptom,
       diagnosis: newRecord.value.diagnosis,
       treatment_plan: newRecord.value.treatment_plan,
       medical_history: newRecord.value.medical_history,
@@ -336,13 +344,19 @@ onMounted(fetchPatients);
 
         <!-- 新增病历表单 -->
         <form @submit.prevent="addRecord" class="modal-form">
+          <label>症状</label>
+          <textarea v-model="newRecord.symptom" rows="3" placeholder="填写症状"></textarea>
           <label>诊断</label>
           <textarea v-model="newRecord.diagnosis" rows="3" placeholder="填写诊断"></textarea>
           <label>治疗方案</label>
           <textarea v-model="newRecord.treatment_plan" rows="3" placeholder="填写治疗方案"></textarea>
+          <label>既往病史</label>
+          <textarea v-model="newRecord.medical_history" rows="3" placeholder="填写既往病史（可选）"></textarea>
+          <label>过敏史</label>
+          <textarea v-model="newRecord.allergy_history" rows="3" placeholder="填写过敏史（可选）"></textarea>
 
           <!-- 模板控件 -->
-          <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+          <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
             <select v-model="selectedTemplateId" @change="applySelectedTemplate">
               <option :value="null">选择模板（可选）</option>
               <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>

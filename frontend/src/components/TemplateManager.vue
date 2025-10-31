@@ -13,6 +13,7 @@ const newTemplate = ref({
   name: '',
   description: '',
   content: {
+    symptom: '',
     diagnosis: '',
     treatment_plan: '',
     medical_history: '',
@@ -78,6 +79,7 @@ const startEdit = (template) => {
       editingTemplate.value.content = JSON.parse(editingTemplate.value.content);
     } catch (e) {
       editingTemplate.value.content = { 
+        symptom: '',
         diagnosis: '', 
         treatment_plan: '',
         medical_history: '',
@@ -86,6 +88,9 @@ const startEdit = (template) => {
     }
   }
   // 确保所有字段都存在
+  if (!editingTemplate.value.content.symptom) {
+    editingTemplate.value.content.symptom = '';
+  }
   if (!editingTemplate.value.content.medical_history) {
     editingTemplate.value.content.medical_history = '';
   }
@@ -103,6 +108,7 @@ const resetForm = () => {
     name: '',
     description: '',
     content: {
+      symptom: '',
       diagnosis: '',
       treatment_plan: '',
       medical_history: '',
@@ -164,6 +170,16 @@ onMounted(fetchTemplates);
         </div>
 
         <div class="template-preview">
+          <div class="preview-section" v-if="template.content.symptom || (typeof template.content === 'string' && template.content.includes('symptom'))">
+            <label>症状:</label>
+            <div class="preview-content">
+              {{
+                typeof template.content === 'object'
+                    ? template.content.symptom
+                    : (template.content.includes('{') ? JSON.parse(template.content).symptom : template.content)
+              }}
+            </div>
+          </div>
           <div class="preview-section" v-if="template.content.diagnosis || (typeof template.content === 'string' && template.content.includes('diagnosis'))">
             <label>诊断:</label>
             <div class="preview-content">
@@ -239,6 +255,16 @@ onMounted(fetchTemplates);
                 v-model="newTemplate.description"
                 placeholder="简短描述此模板的用途（可选）"
             />
+          </div>
+
+          <div class="form-group">
+            <label>症状 <span class="required">*</span></label>
+            <textarea
+                v-model="newTemplate.content.symptom"
+                rows="3"
+                placeholder="输入典型症状描述"
+                required
+            ></textarea>
           </div>
 
           <div class="form-group">
@@ -327,6 +353,16 @@ onMounted(fetchTemplates);
                 v-model="editingTemplate.description"
                 placeholder="简短描述此模板的用途（可选）"
             />
+          </div>
+
+          <div class="form-group">
+            <label>症状 <span class="required">*</span></label>
+            <textarea
+                v-model="editingTemplate.content.symptom"
+                rows="3"
+                placeholder="输入典型症状描述"
+                required
+            ></textarea>
           </div>
 
           <div class="form-group">

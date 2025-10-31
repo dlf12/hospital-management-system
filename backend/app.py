@@ -9,6 +9,8 @@ from datetime import datetime
 from sqlalchemy import or_, func
 import json
 
+from ai_service import generate_record_suggestion, suggest_templates_by_symptom
+
 # 1. 创建 Flask 应用实例
 app = Flask(__name__)
 
@@ -67,16 +69,22 @@ class Patient(db.Model):
 class MedicalRecord(db.Model):
     __tablename__ = 'medical_records'
     id = db.Column(db.Integer, primary_key=True)
+    symptom = db.Column(db.Text, nullable=True)
     diagnosis = db.Column(db.Text, nullable=False)
     treatment_plan = db.Column(db.Text, nullable=False)
+    medical_history = db.Column(db.Text, nullable=True)
+    allergy_history = db.Column(db.Text, nullable=True)
     record_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
 
     def to_dict(self):
         return {
             'id': self.id,
+            'symptom': self.symptom,
             'diagnosis': self.diagnosis,
             'treatment_plan': self.treatment_plan,
+            'medical_history': self.medical_history,
+            'allergy_history': self.allergy_history,
             'record_date': self.record_date.strftime('%Y-%m-%d %H:%M:%S'),
             'patient_id': self.patient_id
         }
@@ -299,12 +307,17 @@ def add_record_for_patient(patient_id):
     Patient.query.get_or_404(patient_id)  # 确保病人存在
     data = request.get_json()
 
-    if not data or not data.get('diagnosis') or not data.get('treatment_plan'):
+    if not data or not data.get('symptom'):
+        return jsonify({'message': '症状信息不能为空'}), 400
+    if not data.get('diagnosis') or not data.get('treatment_plan'):
         return jsonify({'message': '诊断信息和治疗方案不能为空'}), 400
 
     new_record = MedicalRecord(
+        symptom=data.get('symptom'),
         diagnosis=data['diagnosis'],
         treatment_plan=data['treatment_plan'],
+        medical_history=data.get('medical_history'),
+        allergy_history=data.get('allergy_history'),
         patient_id=patient_id
     )
 
@@ -315,6 +328,85 @@ def add_record_for_patient(patient_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': '添加病历失败'}), 500
+
+
+@app.route('/api/patients/<int:patient_id>/records/<int:record_id>', methods=['PUT'])
+@jwt_required()
+def update_record_for_patient(patient_id, record_id):
+    Patient.query.get_or_404(patient_id)
+    record = MedicalRecord.query.get_or_404(record_id)
+
+    if record.patient_id != patient_id:
+        return jsonify({'message': '病历不属于该病人'}), 400
+
+    data = request.get_json() or {}
+
+    if 'symptom' in data and not data.get('symptom'):
+        return jsonify({'message': '症状信息不能为空'}), 400
+    if 'diagnosis' in data and not data.get('diagnosis'):
+        return jsonify({'message': '诊断信息不能为空'}), 400
+    if 'treatment_plan' in data and not data.get('treatment_plan'):
+        return jsonify({'message': '治疗方案不能为空'}), 400
+
+    record.symptom = data.get('symptom', record.symptom)
+    record.diagnosis = data.get('diagnosis', record.diagnosis)
+    record.treatment_plan = data.get('treatment_plan', record.treatment_plan)
+    record.medical_history = data.get('medical_history', record.medical_history)
+    record.allergy_history = data.get('allergy_history', record.allergy_history)
+
+    try:
+        db.session.commit()
+        return jsonify(record.to_dict())
+    except Exception:
+        db.session.rollback()
+        return jsonify({'message': '更新病历失败'}), 500
+
+
+@app.route('/api/ai/generate_record_suggestion', methods=['POST'])
+@jwt_required()
+def api_generate_record_suggestion():
+    data = request.get_json() or {}
+    symptom = (data.get('symptom') or '').strip()
+
+    if not symptom:
+        return jsonify({'message': '症状不能为空'}), 400
+
+    suggestion = generate_record_suggestion(
+        symptom=symptom,
+        medical_history=data.get('medical_history'),
+        allergy_history=data.get('allergy_history'),
+        age=data.get('age'),
+        gender=data.get('gender')
+    )
+
+    if suggestion.get('message'):
+        return jsonify({'message': suggestion['message']}), 500
+
+    return jsonify({
+        'diagnosis': suggestion.get('diagnosis', ''),
+        'treatment_plan': suggestion.get('treatment_plan', '')
+    })
+
+
+@app.route('/api/ai/suggest_templates', methods=['POST'])
+@jwt_required()
+def api_suggest_templates():
+    data = request.get_json() or {}
+    symptom = (data.get('symptom') or '').strip()
+
+    if not symptom:
+        return jsonify({'message': '症状不能为空'}), 400
+
+    user = get_current_user()
+    templates_query = Template.query.filter(
+        (Template.owner_id == user.id) | (Template.is_shared == True)
+    ).order_by(Template.updated_at.desc())
+
+    templates = [tpl.to_dict() for tpl in templates_query.all()]
+    suggestions = suggest_templates_by_symptom(symptom, templates)
+
+    return jsonify({'items': suggestions})
+
 
 # -- 模板接口 (受保护) --
 @app.route('/api/templates', methods=['GET'])
@@ -417,8 +509,11 @@ def save_record_as_template(patient_id, record_id):
     tpl_desc = data.get('description', '')
 
     content = {
+        'symptom': rec.symptom,
         'diagnosis': rec.diagnosis,
-        'treatment_plan': rec.treatment_plan
+        'treatment_plan': rec.treatment_plan,
+        'medical_history': rec.medical_history,
+        'allergy_history': rec.allergy_history
     }
 
     tpl = Template(
@@ -448,15 +543,21 @@ def create_record_from_template(patient_id, tpl_id):
         return jsonify({'message': '模板内容格式错误'}), 400
 
     payload = request.get_json() or {}
+    symptom = payload.get('symptom', content.get('symptom'))
     diagnosis = payload.get('diagnosis', content.get('diagnosis'))
     treatment_plan = payload.get('treatment_plan', content.get('treatment_plan'))
+    medical_history = payload.get('medical_history', content.get('medical_history'))
+    allergy_history = payload.get('allergy_history', content.get('allergy_history'))
 
-    if not diagnosis or not treatment_plan:
-        return jsonify({'message': '创建病历需要诊断和治疗方案'}), 400
+    if not symptom or not diagnosis or not treatment_plan:
+        return jsonify({'message': '创建病历需要症状、诊断和治疗方案'}), 400
 
     new_record = MedicalRecord(
+        symptom=symptom,
         diagnosis=diagnosis,
         treatment_plan=treatment_plan,
+        medical_history=medical_history,
+        allergy_history=allergy_history,
         patient_id=patient_id
     )
 
