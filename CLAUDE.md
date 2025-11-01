@@ -203,3 +203,4 @@ When testing features:
 3. Login with test credentials or register new user
 4. Select a department to test patient/record management
 5. Use template manager to test template functionality
+- 在我的这个项目中，启动前端是切换到frontend目录下后运行npx vite, 不要使用npm run dev

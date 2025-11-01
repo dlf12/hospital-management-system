@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import apiClient from '../api/apiClient';
+import AiChatPanel from './AiChatPanel.vue';
 
 const props = defineProps({
   department: String
@@ -36,9 +37,7 @@ const selectedPatient = ref(null);
 const patientRecords = ref([]);
 const selectedRecord = ref(null);
 const selectedTemplateId = ref('');
-const aiTemplateSuggestions = ref([]);
-const aiGenerateLoading = ref(false);
-const aiTemplateLoading = ref(false);
+const showAiChat = ref(false);
 
 const recordForm = ref({
   symptom: '',
@@ -151,8 +150,8 @@ const openRecordModal = async (patient) => {
   };
   selectedRecord.value = null;
   selectedTemplateId.value = '';
-  aiTemplateSuggestions.value = [];
-  
+  showAiChat.value = false;
+
   await fetchTemplates();
   showRecordModal.value = true;
 };
@@ -166,7 +165,7 @@ const selectRecord = (record) => {
     medical_history: record.medical_history || '',
     allergy_history: record.allergy_history || ''
   };
-  aiTemplateSuggestions.value = [];
+  showAiChat.value = false;
 };
 
 const addNewRecord = () => {
@@ -178,7 +177,7 @@ const addNewRecord = () => {
     medical_history: '',
     allergy_history: ''
   };
-  aiTemplateSuggestions.value = [];
+  showAiChat.value = false;
 };
 
 const saveRecord = async () => {
@@ -262,63 +261,23 @@ const exportAsTemplate = async () => {
   }
 };
 
-const aiGenerateSuggestions = async () => {
-  if (!recordForm.value.symptom) {
-    alert('请先填写症状');
-    return;
-  }
-
-  aiGenerateLoading.value = true;
-  try {
-    const payload = {
-      symptom: recordForm.value.symptom,
-      medical_history: recordForm.value.medical_history,
-      allergy_history: recordForm.value.allergy_history,
-      age: selectedPatient.value?.age,
-      gender: selectedPatient.value?.gender
-    };
-
-    const { data } = await apiClient.post('/ai/generate_record_suggestion', payload);
-    if (data?.diagnosis) {
+// 处理 AI 数据应用
+const handleApplyAiData = async ({ type, data }) => {
+  if (type === 'template') {
+    // 应用模板数据，保留症状
+    recordForm.value.diagnosis = data.diagnosis || recordForm.value.diagnosis;
+    recordForm.value.treatment_plan = data.treatment_plan || recordForm.value.treatment_plan;
+    recordForm.value.medical_history = data.medical_history || recordForm.value.medical_history;
+    recordForm.value.allergy_history = data.allergy_history || recordForm.value.allergy_history;
+  } else if (type === 'diagnosis') {
+    // 应用诊断建议，仅填充诊断和治疗方案
+    if (data.diagnosis) {
       recordForm.value.diagnosis = data.diagnosis;
     }
-    if (data?.treatment_plan) {
+    if (data.treatment_plan) {
       recordForm.value.treatment_plan = data.treatment_plan;
     }
-  } catch (error) {
-    alert(error.response?.data?.message || 'AI 生成失败');
-  } finally {
-    aiGenerateLoading.value = false;
   }
-};
-
-const aiSuggestTemplates = async () => {
-  if (!recordForm.value.symptom) {
-    alert('请先填写症状');
-    return;
-  }
-
-  aiTemplateLoading.value = true;
-  try {
-    const { data } = await apiClient.post('/ai/suggest_templates', {
-      symptom: recordForm.value.symptom
-    });
-    aiTemplateSuggestions.value = data?.items || [];
-    if (!aiTemplateSuggestions.value.length) {
-      alert('未找到匹配的模板');
-    }
-  } catch (error) {
-    aiTemplateSuggestions.value = [];
-    alert(error.response?.data?.message || 'AI 推荐失败');
-  } finally {
-    aiTemplateLoading.value = false;
-  }
-};
-
-const useSuggestedTemplate = async (templateId) => {
-  if (!templateId) return;
-  selectedTemplateId.value = String(templateId);
-  await applyTemplate();
 };
 
 // 生命周期
@@ -525,7 +484,7 @@ onMounted(() => {
           </div>
 
           <!-- 右侧：病历编辑 -->
-          <div class="record-edit-section">
+          <div class="record-edit-section" :class="{ 'ai-active': showAiChat }">
             <div class="section-header">
               <h4>{{ selectedRecord ? '编辑病历' : '新增病历' }}</h4>
               <div class="template-actions">
@@ -535,29 +494,11 @@ onMounted(() => {
                     {{ t.name }}
                   </option>
                 </select>
-                <button @click="aiSuggestTemplates" class="btn-secondary" :disabled="aiTemplateLoading">
-                  {{ aiTemplateLoading ? '推荐中...' : 'AI 推荐模板' }}
-                </button>
-                <button @click="aiGenerateSuggestions" class="btn-primary" :disabled="aiGenerateLoading">
-                  {{ aiGenerateLoading ? '生成中...' : 'AI 生成建议' }}
+                <button @click="showAiChat = true" class="btn-ai-assistant">
+                  ✨ AI 助手
                 </button>
                 <button @click="exportAsTemplate" class="btn-export" :disabled="!selectedRecord">
                   📤 导出为模板
-                </button>
-              </div>
-            </div>
-
-            <div v-if="aiTemplateSuggestions.length" class="ai-suggestion-list">
-              <span class="suggestion-title">AI 推荐模板：</span>
-              <div class="suggestion-tags">
-                <button
-                  v-for="item in aiTemplateSuggestions"
-                  :key="item.id"
-                  type="button"
-                  class="btn-secondary"
-                  @click="useSuggestedTemplate(item.id)"
-                >
-                  {{ item.name }}
                 </button>
               </div>
             </div>
@@ -623,6 +564,15 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- AI 对话面板 -->
+    <AiChatPanel
+      :show="showAiChat"
+      :patient-info="selectedPatient"
+      :record-form="recordForm"
+      @close="showAiChat = false"
+      @apply-data="handleApplyAiData"
+    />
   </div>
 </template>
 
@@ -994,6 +944,28 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   background: white;
+  transition: all 0.3s ease;
+}
+
+/* AI 激活状态 - 渐变边框效果 */
+.record-edit-section.ai-active {
+  position: relative;
+  border: 3px solid transparent;
+  background:
+    linear-gradient(white, white) padding-box,
+    linear-gradient(135deg, #667eea, #764ba2, #f093fb, #667eea) border-box;
+  background-size: 300% 300%;
+  animation: borderGradient 3s ease infinite;
+  border-radius: 12px;
+}
+
+@keyframes borderGradient {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .section-header {
@@ -1092,24 +1064,26 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.ai-suggestion-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0 1.5rem;
-  margin-top: 0.75rem;
-}
-
-.suggestion-title {
+/* AI 助手按钮 */
+.btn-ai-assistant {
+  padding: 0.6rem 1.2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
   font-weight: 600;
-  color: #4a5568;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
-.suggestion-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.btn-ai-assistant:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.5);
 }
 
 .btn-export {
