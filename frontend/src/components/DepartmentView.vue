@@ -454,7 +454,7 @@ onMounted(() => {
 
     <!-- 病历编辑模态框 -->
     <div v-if="showRecordModal" class="modal-overlay" @click.self="showRecordModal = false">
-      <div class="modal-content large">
+      <div class="modal-content large" :class="{ 'ai-active': showAiChat }">
         <div class="modal-header">
           <h3>病历管理 - {{ selectedPatient?.name }}</h3>
           <button @click="showRecordModal = false" class="close-btn">✕</button>
@@ -488,15 +488,15 @@ onMounted(() => {
             <div class="section-header">
               <h4>{{ selectedRecord ? '编辑病历' : '新增病历' }}</h4>
               <div class="template-actions">
+                <button @click="showAiChat = true" class="btn-ai-assistant">
+                  ✨ AI 助手
+                </button>
                 <select v-model="selectedTemplateId" @change="applyTemplate" class="template-select">
                   <option value="">选择模板（可选）</option>
                   <option v-for="t in templates" :key="t.id" :value="t.id">
                     {{ t.name }}
                   </option>
                 </select>
-                <button @click="showAiChat = true" class="btn-ai-assistant">
-                  ✨ AI 助手
-                </button>
                 <button @click="exportAsTemplate" class="btn-export" :disabled="!selectedRecord">
                   📤 导出为模板
                 </button>
@@ -789,6 +789,12 @@ onMounted(() => {
 .modal-content.large {
   max-width: 1200px;
   height: 85vh;
+  transition: transform 0.3s ease;
+}
+
+/* AI 激活时整个模态框左移 */
+.modal-content.large.ai-active {
+  transform: translateX(-200px);
 }
 
 .modal-header {
@@ -1066,24 +1072,19 @@ onMounted(() => {
 
 /* AI 助手按钮 */
 .btn-ai-assistant {
-  padding: 0.6rem 1.2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 0.5rem 1rem;
+  background: #667eea;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  transition: all 0.2s ease;
 }
 
 .btn-ai-assistant:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.5);
+  background: #5568d3;
 }
 
 .btn-export {

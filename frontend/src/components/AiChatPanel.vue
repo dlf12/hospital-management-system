@@ -18,7 +18,7 @@ const messagesContainer = ref(null);
 const initWelcomeMessage = () => {
   messages.value = [{
     type: 'ai',
-    content: '您好！我是医疗AI助手，已成功接入。\n\n我可以为您提供：\n\n1️⃣ 智能推荐模板 - 基于症状匹配相似病历\n2️⃣ 智能诊断建议 - 生成诊断和治疗方案\n\n请选择您需要的功能：',
+    content: '您好！我是医疗AI助手，已成功接入。\n\n我可以为您提供：\n\n1️⃣ 智能推荐模板 - AI分析症状，从现有模板中智能匹配最相关的病历\n2️⃣ 智能诊断建议 - AI生成全新的诊断和治疗方案\n\n请选择您需要的功能：',
     buttons: [
       { label: '智能推荐模板', action: 'recommend' },
       { label: '智能诊断建议', action: 'diagnose' }
@@ -105,7 +105,7 @@ const handleRecommendTemplate = async () => {
   loading.value = true;
   await addMessage({
     type: 'ai',
-    content: '🔍 正在分析症状，为您推荐合适的模板...',
+    content: '🤖 AI正在深度分析症状，为您智能匹配最相关的模板...',
     isLoading: true
   });
 
@@ -128,9 +128,18 @@ const handleRecommendTemplate = async () => {
 
       const preview = `【诊断】${content.diagnosis || '未填写'}\n【治疗方案】${(content.treatment_plan || '未填写').substring(0, 50)}...`;
 
+      // 构建推荐信息，如果有AI理由则展示
+      let recommendMsg = `✅ AI分析完成！基于症状"${props.recordForm.symptom}"，为您推荐以下模板：\n\n📋 【${template.name}】\n${preview}`;
+
+      if (template.reason) {
+        recommendMsg += `\n\n💡 推荐理由：${template.reason}`;
+      }
+
+      recommendMsg += '\n\n是否应用此模板？';
+
       await addMessage({
         type: 'ai',
-        content: `✅ 基于症状"${props.recordForm.symptom}"，为您推荐以下模板：\n\n📋 【${template.name}】\n${preview}\n\n是否应用此模板？`,
+        content: recommendMsg,
         buttons: [
           { label: '✔ 应用此模板', action: 'apply-template', data: template.id },
           { label: '↩ 返回', action: 'reset' }

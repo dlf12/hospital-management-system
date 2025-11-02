@@ -108,8 +108,110 @@ def generate_record_suggestion(
 
 
 def suggest_templates_by_symptom(symptom: str, templates: List[Dict]) -> List[Dict]:
-    """基于症状进行简单模板推荐（关键词匹配）。"""
+    """基于症状使用AI进行智能模板推荐。"""
     if not symptom:
+        return []
+
+    # 如果没有可用模板，直接返回空列表
+    if not templates:
+        return []
+
+    try:
+        client = _get_llm_client()
+    except RuntimeError:
+        # 如果无法获取AI客户端，降级为关键词匹配（保留原逻辑作为fallback）
+        return _fallback_keyword_match(symptom, templates)
+
+    # 构建模板列表供AI分析
+    template_summaries = []
+    for idx, tpl in enumerate(templates):
+        content = tpl.get("content", {})
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except Exception:
+                content = {}
+
+        summary = {
+            "index": idx,
+            "id": tpl.get("id"),
+            "name": tpl.get("name", "未命名模板"),
+            "symptom": content.get("symptom", "")[:100],  # 限制长度
+            "diagnosis": content.get("diagnosis", "")[:100],
+            "treatment_plan": content.get("treatment_plan", "")[:100],
+        }
+        template_summaries.append(summary)
+
+    # 构建AI prompt
+    templates_text = "\n".join([
+        f"{i+1}. 模板ID={t['id']}, 名称={t['name']}, 症状={t['symptom']}, 诊断={t['diagnosis']}"
+        for i, t in enumerate(template_summaries)
+    ])
+
+    prompt = f"""
+你是一名经验丰富的临床医生助手。请根据患者症状，从以下可用的病历模板中选择最相关的一个。
+
+患者症状：
+{symptom}
+
+可用模板列表：
+{templates_text}
+
+要求：
+1. 必须从上述模板中选择一个最相关的模板
+2. 即使症状不完全匹配，也要选择相关度最高的那个
+3. 返回JSON格式：{{"selected_template_id": 模板ID, "reason": "选择理由"}}
+4. 不要返回其他内容，只返回JSON
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": "你是专业的医疗助手，擅长分析症状并匹配最合适的病历模板。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=300,
+        )
+    except Exception:
+        # AI调用失败，降级为关键词匹配
+        return _fallback_keyword_match(symptom, templates)
+
+    content = response.choices[0].message.content.strip() if response.choices else ""
+
+    try:
+        result = json.loads(content)
+        selected_id = result.get("selected_template_id")
+        reason = result.get("reason", "")
+
+        # 找到选中的模板并返回
+        for tpl in templates:
+            if tpl.get("id") == selected_id:
+                return [{
+                    "id": tpl.get("id"),
+                    "name": tpl.get("name"),
+                    "reason": reason
+                }]
+
+        # 如果没找到，返回第一个模板作为兜底
+        if templates:
+            return [{
+                "id": templates[0].get("id"),
+                "name": templates[0].get("name"),
+                "reason": "AI推荐"
+            }]
+
+    except json.JSONDecodeError:
+        # JSON解析失败，降级为关键词匹配
+        return _fallback_keyword_match(symptom, templates)
+
+    return []
+
+
+def _fallback_keyword_match(symptom: str, templates: List[Dict]) -> List[Dict]:
+    """关键词匹配（作为AI调用失败时的降级方案）。"""
+    if not symptom or not templates:
         return []
 
     symptom_lower = symptom.lower()
@@ -135,7 +237,6 @@ def suggest_templates_by_symptom(symptom: str, templates: List[Dict]) -> List[Di
             continue
 
         score = merged_text.count(symptom_lower)
-        # 附加基于分词的粗略评分
         for token in symptom_lower.split():
             if token and token in merged_text:
                 score += 1
@@ -148,6 +249,6 @@ def suggest_templates_by_symptom(symptom: str, templates: List[Dict]) -> List[Di
             })
 
     suggestions.sort(key=lambda item: item["score"], reverse=True)
-    return suggestions[:5]
+    return suggestions[:1] if suggestions else []
 
 
